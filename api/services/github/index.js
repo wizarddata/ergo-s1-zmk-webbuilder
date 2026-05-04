@@ -1,35 +1,35 @@
+const { getToken } = require('./auth')
 const {
-  createOauthFlowUrl,
-  createOauthReturnUrl,
-  getOauthToken,
-  getOauthUser,
-  getUserToken,
-  verifyUserToken
-} = require('./auth')
-
-const {
-  fetchInstallation,
-  fetchInstallationRepos,
+  getAuthenticatedUser,
+  repoExists,
+  forkRepo,
+  ensureFork,
   fetchRepoBranches
-} = require('./installations')
-
+} = require('./repos')
 const {
-  InvalidRepoError,
+  MissingRepoFile,
   fetchKeyboardFiles,
-  commitChanges
+  findCodeKeymap,
+  commitChanges,
+  commitFiles,
+  buildWestYml,
+  buildBuildYaml,
+  fetchFile
 } = require('./files')
 
 module.exports = {
-  createOauthFlowUrl,
-  createOauthReturnUrl,
-  getOauthToken,
-  getOauthUser,
-  getUserToken,
-  verifyUserToken,
-  fetchInstallation,
-  fetchInstallationRepos,
+  getToken,
+  getAuthenticatedUser,
+  repoExists,
+  forkRepo,
+  ensureFork,
   fetchRepoBranches,
-  InvalidRepoError,
+  MissingRepoFile,
   fetchKeyboardFiles,
-  commitChanges
+  findCodeKeymap,
+  commitChanges,
+  commitFiles,
+  buildWestYml,
+  buildBuildYaml,
+  fetchFile
 }

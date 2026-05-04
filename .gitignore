@@ -85,3 +85,8 @@ zmk-config
 
 private-key.pem
 .env
+
+# Builder additions
+app/build
+*.uf2
+.env.local

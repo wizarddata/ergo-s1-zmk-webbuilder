@@ -1,113 +1,98 @@
 import '@fortawesome/fontawesome-free/css/all.css'
 import keyBy from 'lodash/keyBy'
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
-import * as config from './config'
-import './App.css';
+import './App.css'
 import { DefinitionsContext } from './providers'
 import { loadKeycodes } from './keycodes'
 import { loadBehaviours } from './api'
-import KeyboardPicker from './Pickers/KeyboardPicker';
-import Spinner from './Common/Spinner';
+import KeyboardPicker from './Pickers/KeyboardPicker'
+import Spinner from './Common/Spinner'
 import Keyboard from './Keyboard/Keyboard'
 import GitHubLink from './GitHubLink'
 import Loader from './Common/Loader'
+import BuildPanel from './BuildPanel'
 import github from './Pickers/Github/api'
 
-function App() {
+function App () {
   const [definitions, setDefinitions] = useState(null)
-  const [source, setSource] = useState(null)
-  const [sourceOther, setSourceOther] = useState(null)
   const [layout, setLayout] = useState(null)
   const [keymap, setKeymap] = useState(null)
   const [editingKeymap, setEditingKeymap] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [context, setContext] = useState(null)
+  const [boards, setBoards] = useState(['nice_nano'])
 
-  function handleCompile() {
-    fetch(`${config.apiBaseUrl}/keymap`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(editingKeymap || keymap)
-    })
-  }
+  const handleContext = useCallback((ctx) => {
+    setContext(prev => ({ ...prev, ...ctx }))
+  }, [])
 
-  const handleCommitChanges = useMemo(() => function() {
-    const { repository, branch } = sourceOther.github
-
-    ;(async function () {
-      setSaving(true)
-      await github.commitChanges(repository, branch, layout, editingKeymap)
-      setSaving(false)
-
-      setKeymap(editingKeymap)
-      setEditingKeymap(null)
-    })()
-  }, [
-    layout,
-    editingKeymap,
-    sourceOther,
-    setSaving,
-    setKeymap,
-    setEditingKeymap
-  ])
-
-  const handleKeyboardSelected = useMemo(() => function(event) {
-    const { source, layout, keymap, ...other } = event
-
-    setSource(source)
-    setSourceOther(other)
+  const handleKeyboardSelected = useCallback((event) => {
+    const { layout, keymap } = event
     setLayout(layout)
     setKeymap(keymap)
     setEditingKeymap(null)
-  }, [
-    setSource,
-    setSourceOther,
-    setLayout,
-    setKeymap,
-    setEditingKeymap
-  ])
+  }, [])
 
-  const initialize = useMemo(() => {
-    return async function () {
-      const [keycodes, behaviours] = await Promise.all([
-        loadKeycodes(),
-        loadBehaviours()
-      ])
+  const handleUpdateKeymap = useCallback((next) => setEditingKeymap(next), [])
 
-      keycodes.indexed = keyBy(keycodes, 'code')
-      behaviours.indexed = keyBy(behaviours, 'code')
-
-      setDefinitions({ keycodes, behaviours })
+  const handleCommit = useMemo(() => async function () {
+    if (!context?.branch) return
+    setSaving(true)
+    try {
+      await github.commitChanges(context.branch, layout, editingKeymap, { boards, updateInfra: true })
+      setKeymap(editingKeymap)
+      setEditingKeymap(null)
+    } finally {
+      setSaving(false)
     }
-  }, [setDefinitions])
+  }, [context, layout, editingKeymap, boards])
 
-  const handleUpdateKeymap = useMemo(() => function(keymap) {
-    setEditingKeymap(keymap)
-  }, [setEditingKeymap])
+  const initialize = useMemo(() => async function () {
+    const [keycodes, behaviours] = await Promise.all([loadKeycodes(), loadBehaviours()])
+    keycodes.indexed = keyBy(keycodes, 'code')
+    behaviours.indexed = keyBy(behaviours, 'code')
+    setDefinitions({ keycodes, behaviours })
+  }, [])
+
+  const availableBoards = context?.serverConfig?.boards || []
+
+  const toggleBoard = (id) => {
+    setBoards(prev => prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id])
+  }
 
   return (
     <>
       <Loader load={initialize}>
-        <KeyboardPicker onSelect={handleKeyboardSelected} />
+        <KeyboardPicker onSelect={handleKeyboardSelected} onContext={handleContext} />
+
+        {availableBoards.length > 0 && (
+          <fieldset style={{ margin: '8px 0', padding: 8 }}>
+            <legend style={{ fontSize: 12 }}>Build targets</legend>
+            {availableBoards.map(b => (
+              <label key={b.id} style={{ display: 'inline-block', marginRight: 12, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={boards.includes(b.id)}
+                  onChange={() => toggleBoard(b.id)}
+                />
+                {' '}{b.label}
+              </label>
+            ))}
+          </fieldset>
+        )}
+
         <div id="actions">
-          {source === 'local' && (
-            <button disabled={!editingKeymap} onClick={handleCompile}>
-              Save Local
-            </button>
-          )}
-          {source === 'github' && (
-            <button
-              title="Commit keymap changes to GitHub repository"
-              disabled={!editingKeymap}
-              onClick={handleCommitChanges}
-            >
-              {saving ? 'Saving' : 'Commit Changes'}
-              {saving && <Spinner />}
-            </button>
-          )}
+          <button
+            title="Commit keymap changes to GitHub fork"
+            disabled={!editingKeymap || !context?.branch}
+            onClick={handleCommit}
+          >
+            {saving ? 'Saving' : 'Commit Changes'}
+            {saving && <Spinner />}
+          </button>
         </div>
+
         <DefinitionsContext.Provider value={definitions}>
           {layout && keymap && (
             <Keyboard
@@ -117,10 +102,20 @@ function App() {
             />
           )}
         </DefinitionsContext.Provider>
+
+        {context?.branch && layout && (editingKeymap || keymap) && boards.length > 0 && (
+          <BuildPanel
+            branch={context.branch}
+            layout={layout}
+            keymap={editingKeymap || keymap}
+            boards={boards}
+            disabled={saving}
+          />
+        )}
       </Loader>
       <GitHubLink className="github-link" />
     </>
-  );
+  )
 }
 
-export default App;
+export default App

@@ -3,107 +3,49 @@ import EventEmitter from 'eventemitter3'
 
 import * as config from '../../config'
 
-export class API extends EventEmitter {
-  token = null
+class API extends EventEmitter {
   initialized = false
-  installations = null
-  repositories = null
-  repoInstallationMap = null
+  serverConfig = null
+  user = null
+  fork = null
 
   async _request (options) {
-    if (typeof options === 'string') {
-      options = {
-        url: options
-      }
-    }
-
-    if (options.url.startsWith('/')) {
-      options.url = `${config.apiBaseUrl}${options.url}`
-    }
-  
+    if (typeof options === 'string') options = { url: options }
+    if (options.url.startsWith('/')) options.url = `${config.apiBaseUrl}${options.url}`
     options.headers = Object.assign({}, options.headers)
-    if (this.token && !options.headers.Authorization) {
-      options.headers.Authorization = `Bearer ${this.token}`
-    }
-    
-    try {
-      return await axios(options)
-    } catch (err) {
-      if (err.response?.status === 401) {
-        console.error('Authentication failed.')
-        this.emit('authentication-failed', err.response)
-      }
-
-      throw err
-    }
+    return axios(options)
   }
 
-  async init() {
-    if (this.initialized) {
-      return
-    }
-
-    const installationUrl = `${config.apiBaseUrl}/github/installation`
-    const param = new URLSearchParams(window.location.search).get('token')
-    if (!localStorage.auth_token && param) {
-      window.history.replaceState({}, null, window.location.pathname)
-      localStorage.auth_token = param
-    }
-
-    if (localStorage.auth_token) {
-      this.token = localStorage.auth_token
-      const { data } = await this._request(installationUrl)
-      this.emit('authenticated')
-
-      if (!data.installation) {
-        console.warn('No GitHub app installation found for authenticated user.')
-        this.emit('app-not-installed')
-      }
-
-      this.installations = data.installations
-      this.repositories = data.repositories
-      this.repoInstallationMap = data.repoInstallationMap
-    }
-  }
-
-  beginLoginFlow() {
-    localStorage.removeItem('auth_token')
-    window.location.href = `${config.apiBaseUrl}/github/authorize`
-  }
-
-  beginInstallAppFlow() {
-    window.location.href = `https://github.com/apps/${config.githubAppName}/installations/new`
-  }
-  
-  isGitHubAuthorized() {
-    return !!this.token
-  }
-
-  isAppInstalled() {
-    return this.installations?.length && this.repositories?.length
-  }
-
-  async fetchRepoBranches(repo) {
-    const installation = encodeURIComponent(this.repoInstallationMap[repo.full_name])
-    const repository = encodeURIComponent(repo.full_name)
-    const { data } = await this._request(
-      `/github/installation/${installation}/${repository}/branches`
-    )
-
+  async loadConfig () {
+    const { data } = await this._request('/github/config')
+    this.serverConfig = data
     return data
   }
 
-  async fetchLayoutAndKeymap(repo, branch) {
-    const installation = encodeURIComponent(this.repoInstallationMap[repo])
-    const repository = encodeURIComponent(repo)
-    const url = new URL(`${config.apiBaseUrl}/github/keyboard-files/${installation}/${repository}`)
+  async setup () {
+    const { data } = await this._request('/github/setup')
+    this.user = data.user
+    this.fork = data.fork
+    this.created = data.created
+    return data
+  }
 
-    if (branch) {
-      url.search = new URLSearchParams({ branch }).toString()
-    }
+  async init () {
+    if (this.initialized) return
+    await this.loadConfig()
+    await this.setup()
+    this.initialized = true
+  }
 
+  async fetchRepoBranches () {
+    const { data } = await this._request(`/github/branches/${this.fork}`)
+    return data
+  }
+
+  async fetchLayoutAndKeymap (branch) {
+    const url = `/github/keyboard-files/${this.fork}?branch=${encodeURIComponent(branch)}`
     try {
-      const { data } = await this._request(url.toString())
+      const { data } = await this._request(url)
       const defaultLayout = data.info.layouts.default || data.info.layouts[Object.keys(data.info.layouts)[0]]
       return {
         layout: defaultLayout.layout,
@@ -111,24 +53,64 @@ export class API extends EventEmitter {
       }
     } catch (err) {
       if (err.response?.status === 400) {
-        console.error('Failed to load keymap and layout from github', err.response.data)
         this.emit('repo-validation-error', err.response.data)
       }
-
       throw err
     }
   }
 
-  commitChanges(repo, branch, layout, keymap) {
-    const installation = encodeURIComponent(this.repoInstallationMap[repo])
-    const repository = encodeURIComponent(repo)
-
+  async commitChanges (branch, layout, keymap, opts = {}) {
     return this._request({
-      url: `/github/keyboard-files/${installation}/${repository}/${encodeURIComponent(branch)}`,
+      url: `/github/keyboard-files/${this.fork}/${encodeURIComponent(branch)}`,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      data: { layout, keymap }
+      data: { layout, keymap, ...opts }
     })
+  }
+
+  buildStream (branch, payload, handlers = {}) {
+    const url = `${config.apiBaseUrl}/build/${this.fork}/${encodeURIComponent(branch)}`
+    const controller = new AbortController()
+
+    ;(async () => {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        })
+        if (!response.ok) {
+          handlers.error?.({ message: `HTTP ${response.status}` })
+          return
+        }
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder('utf-8')
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          let idx
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const chunk = buffer.slice(0, idx)
+            buffer = buffer.slice(idx + 2)
+            const eventLine = chunk.split('\n').find(l => l.startsWith('event: '))
+            const dataLine = chunk.split('\n').find(l => l.startsWith('data: '))
+            if (!eventLine || !dataLine) continue
+            const event = eventLine.slice(7).trim()
+            const data = JSON.parse(dataLine.slice(6))
+            handlers[event]?.(data)
+          }
+        }
+        handlers.end?.()
+      } catch (err) {
+        if (err.name === 'AbortError') return
+        handlers.error?.({ message: err.message || String(err) })
+      }
+    })()
+
+    return () => controller.abort()
   }
 }
 

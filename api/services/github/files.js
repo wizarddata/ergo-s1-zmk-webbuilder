@@ -1,11 +1,12 @@
 const api = require('./api')
-const auth = require('./auth')
+const { getToken } = require('./auth')
 const zmk = require('../zmk')
+const config = require('../../config')
 
 const MODE_FILE = '100644'
 
 class MissingRepoFile extends Error {
-  constructor(path) {
+  constructor (path) {
     super()
     this.name = 'MissingRepoFile'
     this.path = path
@@ -13,18 +14,29 @@ class MissingRepoFile extends Error {
   }
 }
 
-async function fetchKeyboardFiles (installationId, repository, branch) {
-  const { data: { token: installationToken } } = await auth.createInstallationToken(installationId)
-  const { data: info } = await fetchFile(installationToken, repository, 'config/info.json', { raw: true, branch })
-  const keymap = await fetchKeymap(installationToken, repository, branch)
-  const originalCodeKeymap = await findCodeKeymap(installationToken, repository, branch)
+async function fetchFile (repo, path, { branch = null, raw = false } = {}) {
+  const url = `/repos/${repo}/contents/${path}`
+  const params = branch ? { ref: branch } : {}
+  const headers = { Accept: raw ? 'application/vnd.github.v3.raw' : 'application/json' }
+  try {
+    return await api.request({ url, headers, params, token: getToken() })
+  } catch (err) {
+    if (err.response?.status === 404) throw new MissingRepoFile(path)
+    throw err
+  }
+}
+
+async function fetchKeyboardFiles (repo, branch) {
+  const { data: info } = await fetchFile(repo, 'config/info.json', { raw: true, branch })
+  const keymap = await fetchKeymap(repo, branch)
+  const originalCodeKeymap = await findCodeKeymap(repo, branch)
   return { info, keymap, originalCodeKeymap }
 }
 
-async function fetchKeymap (installationToken, repository, branch) {
+async function fetchKeymap (repo, branch) {
   try {
-    const { data : keymap } = await fetchFile(installationToken, repository, 'config/keymap.json', { raw: true, branch })
-    return keymap
+    const { data } = await fetchFile(repo, 'config/keymap.json', { raw: true, branch })
+    return data
   } catch (err) {
     if (err instanceof MissingRepoFile) {
       return {
@@ -34,114 +46,120 @@ async function fetchKeymap (installationToken, repository, branch) {
         layer_names: ['default'],
         layers: [[]]
       }
-    } else {
-      throw err
     }
+    throw err
   }
 }
 
-async function fetchFile (installationToken, repository, path, options = {}) {
-  const { raw = false, branch = null } = options
-  const url = `/repos/${repository}/contents/${path}`
-  const params = {}
-
-  if (branch) {
-    params.ref = branch
-  }
-
-  const headers = { Accept: raw ? 'application/vnd.github.v3.raw' : 'application/json' }
-  try {
-    return await api.request({ url, headers, params, token: installationToken })
-  } catch (err) {
-    if (err.response?.status === 404) {
-      throw new MissingRepoFile(path)
-    }
-  }
+async function findCodeKeymap (repo, branch) {
+  const { data: directory } = await fetchFile(repo, 'config', { branch })
+  const file = directory.find(f => f.name.toLowerCase().endsWith('.keymap'))
+  if (!file) throw new MissingRepoFile('config/*.keymap')
+  return file
 }
 
-async function findCodeKeymap (installationToken, repository, branch) {
-  // Assume that the relevant files are under `config/` and not a complicated
-  // directory structure, and that there are fewer than 1000 files in this path
-  // (a limitation of GitHub's repo contents API).
-  const { data: directory } = await fetchFile(installationToken, repository, 'config', { branch })
-  const originalCodeKeymap = directory.find(file => file.name.toLowerCase().endsWith('.keymap'))
-
-  if (!originalCodeKeymap) {
-    throw new MissingRepoFile('config/*.keymap')
-  }
-
-  return originalCodeKeymap
+async function findCodeKeymapTemplate (repo, branch) {
+  const { data: directory } = await fetchFile(repo, 'config', { branch })
+  const tpl = directory.find(f => f.name.toLowerCase().endsWith('.keymap.template'))
+  if (!tpl) return null
+  const { data: content } = await fetchFile(repo, tpl.path, { branch, raw: true })
+  return content
 }
 
-async function findCodeKeymapTemplate (installationToken, repository, branch) {
-  // Assume that the relevant files are under `config/` and not a complicated
-  // directory structure, and that there are fewer than 1000 files in this path
-  // (a limitation of GitHub's repo contents API).
-  const { data: directory } = await fetchFile(installationToken, repository, 'config', { branch })
-  const template = directory.find(file => file.name.toLowerCase().endsWith('.keymap.template'))
-
-  if (template) {
-    const { data: content } = await fetchFile(installationToken, repository, template.path, { branch, raw: true })
-    return content
-  }
+async function getRefSha (repo, branch) {
+  const { data } = await api.request({
+    url: `/repos/${repo}/commits/${branch}`,
+    token: getToken()
+  })
+  return { sha: data.sha, treeSha: data.commit.tree.sha }
 }
 
-async function commitChanges (installationId, repository, branch, layout, keymap) {
-  const { data: { token: installationToken } } = await auth.createInstallationToken(installationId)
-  const template = await findCodeKeymapTemplate(installationToken, repository, branch)
-
-  const generatedKeymap = zmk.generateKeymap(layout, keymap, template)
-
-  const originalCodeKeymap = await findCodeKeymap(installationToken, repository, branch)
-  const { data: {sha, commit} } = await api.request({ url: `/repos/${repository}/commits/${branch}`, token: installationToken })
+async function commitFiles (repo, branch, files, message = 'Update from ErgoS1 ZMK Builder') {
+  const { sha, treeSha } = await getRefSha(repo, branch)
 
   const { data: { sha: newTreeSha } } = await api.request({
-    url: `/repos/${repository}/git/trees`,
+    url: `/repos/${repo}/git/trees`,
     method: 'POST',
-    token: installationToken,
+    token: getToken(),
     data: {
-      base_tree: commit.tree.sha,
-      tree: [
-        {
-          path: originalCodeKeymap.path,
-          mode: MODE_FILE,
-          type: 'blob',
-          content: generatedKeymap.code
-        },
-        {
-          path: 'config/keymap.json',
-          mode: MODE_FILE,
-          type: 'blob',
-          content: generatedKeymap.json
-        }
-      ]
+      base_tree: treeSha,
+      tree: files.map(f => ({
+        path: f.path,
+        mode: MODE_FILE,
+        type: 'blob',
+        content: f.content
+      }))
     }
   })
 
-  const { data: { sha: newSha } } = await api.request({
-    url: `/repos/${repository}/git/commits`,
+  const { data: { sha: newCommitSha } } = await api.request({
+    url: `/repos/${repo}/git/commits`,
     method: 'POST',
-    token: installationToken,
-    data: {
-      tree: newTreeSha,
-      message: 'Updated keymap',
-      parents: [sha]
-    }
+    token: getToken(),
+    data: { tree: newTreeSha, message, parents: [sha] }
   })
 
   await api.request({
-    url: `/repos/${repository}/git/refs/heads/${branch}`,
+    url: `/repos/${repo}/git/refs/heads/${branch}`,
     method: 'PATCH',
-    token: installationToken,
-    data: {
-      sha: newSha
-    }
+    token: getToken(),
+    data: { sha: newCommitSha }
   })
+
+  return newCommitSha
+}
+
+function buildBuildYaml (boardIds) {
+  const boards = config.BOARDS.filter(b => boardIds.includes(b.id))
+  const include = boards.flatMap(b => [
+    `  - board: ${b.id}\n    shield: ${b.shieldLeft}`,
+    `  - board: ${b.id}\n    shield: ${b.shieldRight}`
+  ]).join('\n')
+  return `---\ninclude:\n${include}\n`
+}
+
+function buildWestYml () {
+  const [owner, name] = config.ZMK_FORK_REPO.split('/')
+  return `manifest:
+  remotes:
+    - name: ${owner}
+      url-base: https://github.com/${owner}
+  projects:
+    - name: ${name}
+      remote: ${owner}
+      revision: ${config.ZMK_FORK_REVISION}
+      import: app/west.yml
+  self:
+    path: config
+`
+}
+
+async function commitChanges (repo, branch, layout, keymap, opts = {}) {
+  const { boards = ['nice_nano'], updateInfra = false } = opts
+  const template = await findCodeKeymapTemplate(repo, branch)
+  const generated = zmk.generateKeymap(layout, keymap, template)
+  const original = await findCodeKeymap(repo, branch)
+
+  const files = [
+    { path: original.path, content: generated.code },
+    { path: 'config/keymap.json', content: generated.json }
+  ]
+
+  if (updateInfra) {
+    files.push({ path: 'config/west.yml', content: buildWestYml() })
+    files.push({ path: 'build.yaml', content: buildBuildYaml(boards) })
+  }
+
+  return await commitFiles(repo, branch, files, 'Update keymap from ErgoS1 ZMK Builder')
 }
 
 module.exports = {
   MissingRepoFile,
   fetchKeyboardFiles,
   findCodeKeymap,
-  commitChanges
+  commitChanges,
+  commitFiles,
+  buildWestYml,
+  buildBuildYaml,
+  fetchFile
 }

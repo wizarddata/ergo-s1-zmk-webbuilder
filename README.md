@@ -1,96 +1,140 @@
-# <img alt="Keymap Editor Icon" height="24px" src="https://github.com/nickcoutsos/keymap-editor/assets/1165066/6675cc0d-d6cd-40a6-9d2a-fa4a86749a6e" /> Keymap Editor
+# ErgoS1 ZMK Builder
 
-A browser app to edit ZMK keymaps. Although one of the goals for this project is
-to simplify the manual effort of keymap editing for the end user, is isn't a
-substitute for understanding ZMK. Be sure to read ZMK's documentation in order
-to fully leverage this app's functionality.
+Local-deploy webapp for editing the [Ergo S-1 keyboard](https://github.com/wizarddata/Ergo-S-1) ZMK keymap with a GUI and building firmware via GitHub Actions.
 
-**Try it now!** Go to the [Keymap Editor] and try it out with the built-in
-[keymap-editor-demo-crkbd] before setting up your own repo.
+Forked from [Nylone/zmk-keymap-editor](https://github.com/Nylone/zmk-keymap-editor) (which is itself a fork of [nickcoutsos/keymap-editor](https://github.com/nickcoutsos/keymap-editor)). GitHub OAuth/App machinery has been replaced with a Personal Access Token flow so the app can run entirely locally.
 
-**[Talk to me! 🗣](https://github.com/nickcoutsos/keymap-editor/discussions)**
+## How it works
 
-I'd love to know how the Keymap Editor is working out for you! Has it helped you
-with managing your own keymaps, are you struggling with functionality, have you
-created your own keyboard and directed users here?
+1. You provide a GitHub Personal Access Token (PAT).
+2. On first start, the app forks `arcanemachine/ergo-s-1-zmk-config` into your account if you don't already have it.
+3. It loads `config/info.json` + `config/ergo_s1_oe.keymap` from the fork into the GUI.
+4. You edit the keymap in the browser.
+5. **Build Firmware** commits the modified keymap (plus a regenerated `west.yml` pointing at `arcanemachine/zmk-ergo-s-1` and a `build.yaml` with your selected boards) to your fork, dispatches the GitHub Actions workflow, polls until completion, and streams the resulting `firmware.zip` back to your browser for download.
 
-I want to know about all of that. I'm not taking any donations, the only thing
-driving this work forward is knowing what is or isn't helping people.
+## Supported targets
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="./screenshots/editor-screenshot-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="./screenshots/editor-screenshot-light.png">
-  <img alt="Shows a screenshot of the Keymap Editor application featuring a graphical layout of the Corne Keyboard with a keymap loaded from the nickcoutsos/keymap-editor-demo-crkbd GitHub repository." src="./screenshots/editor-screenshot-light.png">
-</picture>
+| Board | Shield (left / right) | Notes |
+|-------|-----------------------|-------|
+| `nice_nano` | `ergo_s1_oe_left` / `ergo_s1_oe_right` | Production OSE (Open Source Edition). Default. |
+| `nrf52840dk_nrf52840` | `ergo_s1_left` / `ergo_s1_right` | Prototype/standard variant. |
 
-> **Note**
->
-> **Source code updates are no longer shared here**
->
-> I have been developing this application on and off since August 2020, but more
-> recent source changes have not been published and this isn't likely to change
-> any time soon. For more information see [Wiki: Source Code Updates]
->
-> If you do want to use the available source code as-is, you may wish to review
-> the [original README](old-readme.md).
+Both can be enabled simultaneously — Actions builds all four `.uf2` files in parallel.
 
-## Features
+## Requirements
 
-* WYSIWYG keymap editing
-* Multiple keymap sources:
-  * GitHub repositories
-  * Clipboard
-  * File system\*
-* [Dark mode!](./screenshots/editor-screenshot-darkmode.png)
-* Conditional Layers
-* [Combo editing](./screenshots/editor-screenshot-combos.png)
-* [Macro editing](./screenshots/editor-screenshot-macros.png) (including support for creating/using parameterized macros)
-* Behavior editing (creation and re-configuration)
-* Auto-generated layouts for ZMK's supported keyboards\*\*
-* Rotary encoders
-* Multiple keymaps
+- Docker Desktop (Windows/macOS) or Docker Engine + Compose (Linux).
+- A GitHub account.
+- A GitHub Personal Access Token — see below.
 
-<sub>\*_File system web APIs are currently only supported in Chromium-based browsers_</sub>
+## Setup
 
-<sub>\*\*_Auto-generated layouts are meant as a starting-off point and are provided for most keyboards available in the ZMK repo and may need customization -- I own exactly one keyboard, I don't know all the layouts._</sub>
+### 1. Create a Personal Access Token
 
+Pick one:
 
-_Read more: [Wiki:Features]_
+- **Classic PAT** (https://github.com/settings/tokens) — scopes: `repo`, `workflow`.
+- **Fine-grained PAT** (https://github.com/settings/personal-access-tokens) — scoped to your fork of `ergo-s-1-zmk-config` (or "All repositories"), with permissions:
+  - Contents: Read and write
+  - Workflows: Read and write
+  - Actions: Read
 
+The token must be able to fork the upstream repo on first run, so for the very first run it needs access to your account broadly enough to create the fork. After the fork exists, a fine-grained token scoped to just that one repo is sufficient.
 
-## Usage
+### 2. Configure environment
 
-### Local
+```sh
+cp .env.template .env
+# Edit .env, paste your PAT into GITHUB_PAT=
+```
 
-This project runs as a web application, but there are still options for working
-with offline ZMK keymaps:
+### 3. Run
 
-In the editor you can choose the _Clipboard_ keymap source and paste in the
-contents of your ZMK `.keymap` file, and if you're using a Chromium-based web
-browser you can alternatively use the _FileSystem_ source to read and make 
-changes to select `.keymap` files directly.
+```sh
+docker compose up --build
+```
 
-Actual firmware builds are outside of the scope of this project, so if you're
-working on local keymap data it is assumed that you have a local ZMK development
-environment or some other means of running builds.
+Open http://localhost:8080.
 
-### Web Integrations
+The first run creates your fork (~5–30s wait). Subsequent starts are instant.
 
-This editor includes a GitHub integration. You can load the web app and grant it
-access to your public or private zmk-config repos. Changes to your keymap are
-committed right back to the repository so you only ever need to leave the app to
-download and flash firmware.
+## Local development (no Docker)
+
+```sh
+npm install              # installs api + app deps via postinstall
+npm run dev              # ENABLE_DEV_SERVER=true → spawns CRA on :3000, API on :8080
+```
+
+Then open http://localhost:3000.
+
+For production-style local run (single-port, served from express):
+
+```sh
+npm install
+cd app && npm run build && cd ..
+node index.js
+```
+
+Then open http://localhost:8080.
+
+## Build flow internals
+
+`POST /build/{owner}/{repo}/{branch}` is a **Server-Sent Events** stream. Events:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `status` | `{ phase, message }` | Phase changes: commit → dispatch → locate → build → artifact |
+| `commit` | `{ sha }` | After keymap commit lands |
+| `run` | `{ id, htmlUrl, number }` | Workflow run located |
+| `done` | `{ runId, artifactId, downloadUrl, sizeBytes }` | Build succeeded, artifact ready |
+| `error` | `{ message, detail? }` | Anything failed |
+
+The artifact is downloaded via `GET /build/{owner}/{repo}/artifact/{artifactId}` (proxy through the local server because the GitHub artifact endpoint requires the PAT in the `Authorization` header).
+
+## Flashing firmware
+
+Each side flashes independently:
+
+1. Unzip `firmware.zip`.
+2. Double-press the reset button on the back of the keyboard half to enter bootloader mode.
+3. Connect via USB. The half mounts as a removable drive.
+4. Copy `ergo_s1_oe_left.uf2` (or `ergo_s1_left.uf2` for prototype) onto the drive.
+5. The drive auto-ejects when complete; the keyboard restarts.
+6. Repeat for the other half with the matching `_right.uf2`.
+
+## Troubleshooting
+
+- **`401 Unauthorized` on first request** → PAT missing or wrong scopes. Check `repo` + `workflow`.
+- **Fork created but `keyboard-files` returns 404** → fork is async-replicating; wait a few seconds and reload.
+- **Build run not located** → The workflow file in your fork may have been disabled. Visit `https://github.com/<you>/ergo-s-1-zmk-config/actions` and re-enable.
+- **Build fails on shield not found** → `west.yml` did not get regenerated. Check `config/west.yml` on your fork — it should reference `arcanemachine/zmk-ergo-s-1`. If it still points at `zmkfirmware/zmk`, click Build Firmware again (the app rewrites it on every build with `updateInfra: true`).
+- **CORS errors** → set `APP_BASE_URL` in `.env` to the URL you're loading the page from (default `http://localhost:8080`).
+
+## Architecture
+
+```
+Browser
+  │  GUI edit (React, port 8080)
+  ▼
+Node Express server (api/)
+  ├── /github/setup       PAT → ensure user fork exists
+  ├── /github/keyboard-files/{owner}/{repo}    fetch info.json + keymap
+  ├── /github/keyboard-files/{owner}/{repo}/{branch}   POST commit
+  └── /build/{owner}/{repo}/{branch}    SSE: commit → dispatch → poll → artifact
+       │
+       ▼  GitHub REST API (PAT auth)
+GitHub
+  ├── your fork of arcanemachine/ergo-s-1-zmk-config (config + keymap)
+  └── Actions runner → builds against arcanemachine/zmk-ergo-s-1 (ZMK fork w/ ergo_s1 shields)
+```
+
+## Credit
+
+- [nickcoutsos](https://github.com/nickcoutsos/keymap-editor) — original keymap editor
+- [Nylone](https://github.com/Nylone/zmk-keymap-editor) — fork
+- [arcanemachine](https://github.com/arcanemachine) — Ergo S-1 ZMK config + ZMK fork with `ergo_s1` / `ergo_s1_oe` shields
+- [wizarddata](https://github.com/wizarddata/Ergo-S-1) — Ergo S-1 keyboard
 
 ## License
 
-The code in this repo is available under the MIT license.
-
-The collection of ZMK keycodes is taken from the ZMK documentation under the MIT
-license as well.
-
-[Keymap Editor]: https://nickcoutsos.github.io/keymap-editor/
-[keymap-editor-demo-crkbd]: https://github.com/nickcoutsos/keymap-editor-demo-crkbd/
-[keymap-editor-demo-crkbd template]: https://github.com/nickcoutsos/keymap-editor-demo-crkbd/generate
-[Wiki:Automatic Layout Generation]: https://github.com/nickcoutsos/keymap-editor/wiki/Defining-keyboard-layouts#automatic-layout-generation
-[Wiki:Features]: https://github.com/nickcoutsos/keymap-editor/wiki/Features
-[Wiki: Source Code Updates]: https://github.com/nickcoutsos/keymap-editor/wiki/Source-Code-Updates
+MIT.

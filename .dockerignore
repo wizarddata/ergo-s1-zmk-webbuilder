@@ -1,0 +1,15 @@
+.git
+.gitignore
+node_modules
+app/node_modules
+app/build
+_refs
+*.uf2
+.env
+.env.local
+*.mov
+screenshots
+old-readme.md
+running-locally.md
+README.md
+keymap-editor-demo.mov

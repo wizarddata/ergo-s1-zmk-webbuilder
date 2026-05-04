@@ -1,17 +1,15 @@
 {
-  "name": "keymap-editor",
-  "version": "1.0.0",
-  "description": "",
+  "name": "ergo-s1-zmk-builder",
+  "version": "0.1.0",
+  "description": "Local-deploy webapp for ErgoS1 ZMK keymap GUI + GitHub Actions firmware builds.",
   "main": "index.js",
   "scripts": {
     "postinstall": "cd app && npm install",
     "start": "node index.js",
     "dev": "cross-env ENABLE_DEV_SERVER=true node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --check index.js && for f in api/*.js api/routes/*.js api/services/*.js api/services/github/*.js api/services/zmk/*.js; do node --check \"$f\" || exit 1; done"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "axios": "^0.21.4",
     "body-parser": "^1.19.0",
@@ -19,9 +17,7 @@
     "cross-env": "^7.0.3",
     "dotenv": "^10.0.0",
     "express": "^4.17.1",
-    "express-ws": "^4.0.0",
     "http-link-header": "^1.0.3",
-    "jsonwebtoken": "^8.5.1",
     "lodash": "^4.17.21",
     "morgan": "^1.10.0"
   },
