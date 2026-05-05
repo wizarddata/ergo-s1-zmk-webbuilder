@@ -1,16 +1,25 @@
+const path = require('path')
+const os = require('os')
 const process = require('process')
 require('dotenv/config')
 
-const PORT = process.env.PORT || 8080
+const PORT = process.env.PORT || 8090
 const ENABLE_DEV_SERVER = process.env.ENABLE_DEV_SERVER
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`
 
-const GITHUB_PAT = process.env.GITHUB_PAT
-const UPSTREAM_REPO = process.env.UPSTREAM_REPO || 'arcanemachine/ergo-s-1-zmk-config'
-const UPSTREAM_BRANCH = process.env.UPSTREAM_BRANCH || 'master'
-const ZMK_FORK_REPO = process.env.ZMK_FORK_REPO || 'arcanemachine/zmk-ergo-s-1'
+const ZMK_FORK_GIT_URL = process.env.ZMK_FORK_GIT_URL || 'https://github.com/arcanemachine/zmk-ergo-s-1.git'
 const ZMK_FORK_REVISION = process.env.ZMK_FORK_REVISION || 'main'
-const FORK_BRANCH = process.env.FORK_BRANCH || 'master'
+const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'zmkfirmware/zmk-dev-arm:4.1-branch'
+
+const BUILD_CACHE_VOLUME = process.env.BUILD_CACHE_VOLUME || 'ergo-s1-cache'
+
+function defaultArtifactsDir () {
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA) {
+    return path.join(process.env.LOCALAPPDATA, 'ergo-s1-builder', 'artifacts')
+  }
+  return path.join(os.homedir(), '.cache', 'ergo-s1-builder', 'artifacts')
+}
+const ARTIFACTS_DIR = process.env.ARTIFACTS_DIR || defaultArtifactsDir()
 
 const BOARDS = [
   { id: 'nice_nano', label: 'nice_nano (OSE)', shieldLeft: 'ergo_s1_oe_left', shieldRight: 'ergo_s1_oe_right' },
@@ -21,11 +30,10 @@ module.exports = {
   PORT,
   ENABLE_DEV_SERVER,
   APP_BASE_URL,
-  GITHUB_PAT,
-  UPSTREAM_REPO,
-  UPSTREAM_BRANCH,
-  ZMK_FORK_REPO,
+  ZMK_FORK_GIT_URL,
   ZMK_FORK_REVISION,
-  FORK_BRANCH,
+  DOCKER_IMAGE,
+  BUILD_CACHE_VOLUME,
+  ARTIFACTS_DIR,
   BOARDS
 }

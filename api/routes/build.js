@@ -1,14 +1,13 @@
+const path = require('path')
+const fs = require('fs')
+const crypto = require('crypto')
 const { Router } = require('express')
 
 const config = require('../config')
-const { commitChanges } = require('../services/github')
-const {
-  dispatchWorkflow,
-  findRunWithRetry,
-  waitForRun,
-  getArtifacts,
-  downloadArtifactZip
-} = require('../services/github/builds')
+const cache = require('../services/zmk/west-cache')
+const localBuild = require('../services/zmk/local-build')
+const { generateKeymap } = require('../services/zmk/keymap')
+const registry = require('../services/build-registry')
 
 const router = Router()
 
@@ -24,69 +23,133 @@ function sse (res) {
   }
 }
 
-router.post('/:owner/:repo/:branch', async (req, res) => {
-  const repo = `${req.params.owner}/${req.params.repo}`
-  const { branch } = req.params
-  const { keymap, layout, boards = ['nice_nano'], updateInfra = true, defines = [] } = req.body
-  const send = sse(res)
+const VALID_SHIELDS = new Set(Object.keys(localBuild.SHIELD_DIRS))
 
+router.get('/preflight', async (req, res) => {
   try {
-    send('status', { phase: 'commit', message: 'Committing keymap to fork' })
-    const sha = await commitChanges(repo, branch, layout, keymap, { boards, updateInfra, defines })
-    send('commit', { sha })
-
-    send('status', { phase: 'dispatch', message: 'Dispatching GitHub Actions workflow' })
-    const { dispatchedAt } = await dispatchWorkflow(repo, branch)
-
-    send('status', { phase: 'locate', message: 'Locating workflow run' })
-    const run = await findRunWithRetry(repo, branch, dispatchedAt)
-    send('run', { id: run.id, htmlUrl: run.html_url, number: run.run_number })
-
-    const completed = await waitForRun(repo, run.id, update => {
-      send('status', { phase: 'build', ...update })
-    })
-
-    if (completed.conclusion !== 'success') {
-      send('error', { message: `Build ${completed.conclusion}`, htmlUrl: completed.html_url })
-      return res.end()
-    }
-
-    send('status', { phase: 'artifact', message: 'Fetching firmware artifact' })
-    const artifacts = await getArtifacts(repo, run.id)
-    const firmware = artifacts.find(a => a.name === 'firmware') || artifacts[0]
-    if (!firmware) {
-      send('error', { message: 'No artifacts found on completed run' })
-      return res.end()
-    }
-
-    send('done', {
-      runId: run.id,
-      artifactId: firmware.id,
-      artifactName: firmware.name,
-      sizeBytes: firmware.size_in_bytes,
-      downloadUrl: `/build/${req.params.owner}/${req.params.repo}/artifact/${firmware.id}`
-    })
-    res.end()
+    await cache.preflight()
+    res.json({ ok: true, image: config.DOCKER_IMAGE, volume: cache.VOLUME, artifacts: config.ARTIFACTS_DIR })
   } catch (err) {
-    console.error('Build error', err.response?.data || err)
-    try {
-      send('error', { message: err.message || String(err), detail: err.response?.data })
-      res.end()
-    } catch (_) { /* response already closed */ }
+    res.status(503).json({ ok: false, error: err.message })
   }
 })
 
-router.get('/:owner/:repo/artifact/:artifactId', async (req, res) => {
-  const repo = `${req.params.owner}/${req.params.repo}`
+router.post('/reset-cache', async (req, res) => {
   try {
-    const buf = await downloadArtifactZip(repo, req.params.artifactId)
-    res.setHeader('Content-Type', 'application/zip')
-    res.setHeader('Content-Disposition', `attachment; filename="ergo_s1_firmware_${req.params.artifactId}.zip"`)
-    res.send(buf)
+    if (registry.isRunning()) {
+      return res.status(409).json({ ok: false, error: 'build in progress' })
+    }
+    await cache.resetCache()
+    res.json({ ok: true, volume: cache.VOLUME })
   } catch (err) {
-    console.error('Artifact download error', err.response?.data || err)
-    res.status(500).json({ error: err.message || String(err) })
+    res.status(500).json({ ok: false, error: err.message })
   }
+})
+
+router.get('/state', (req, res) => res.json(registry.state()))
+
+router.get('/local/stream/:id', (req, res) => {
+  const send = sse(res)
+  const c = registry.current
+  if (!c || c.id !== req.params.id) {
+    send('error', { message: 'no such build', activeId: c?.id })
+    return res.end()
+  }
+  for (const { event, data } of c.logs) send(event, data)
+  if (!registry.isRunning()) {
+    return res.end()
+  }
+  const onEvent = ({ event, data }) => send(event, data)
+  registry.on('event', onEvent)
+  const onEnd = () => {
+    registry.off('event', onEvent)
+    res.end()
+  }
+  registry.once('end', onEnd)
+  res.on('close', () => {
+    registry.off('event', onEvent)
+    registry.off('end', onEnd)
+  })
+})
+
+router.post('/local', async (req, res) => {
+  const { board, shields, layout, keymap, defines = [] } = req.body || {}
+  const send = sse(res)
+
+  if (registry.isRunning()) {
+    send('error', { message: 'build already running', existingId: registry.current.id })
+    return res.end()
+  }
+
+  if (!board || !Array.isArray(shields) || shields.length === 0) {
+    send('error', { message: 'board + shields[] required' })
+    return res.end()
+  }
+  for (const s of shields) {
+    if (!VALID_SHIELDS.has(s)) {
+      send('error', { message: `Unknown shield: ${s}` })
+      return res.end()
+    }
+  }
+  if (!layout || !keymap) {
+    send('error', { message: 'layout + keymap required' })
+    return res.end()
+  }
+
+  const id = crypto.randomBytes(8).toString('hex') + '-' + Date.now()
+  registry.start(id, { board, shields })
+  send('attach', { id })
+  for (const { event, data } of registry.current.logs) send(event, data)
+
+  const onEvent = ({ event, data }) => send(event, data)
+  registry.on('event', onEvent)
+  res.on('close', () => registry.off('event', onEvent))
+
+  const events = {
+    phase: (name, extra = {}) => registry.push('status', { phase: name, ...extra }),
+    log: (line) => registry.push('log', { line })
+  }
+
+  try {
+    events.phase('prepare', { message: 'Preflight + cache check' })
+    await cache.preflight()
+    await cache.ensureImage(events)
+    await cache.ensureCache(events)
+
+    const keymapWithDefines = Object.assign({}, keymap, { defines })
+    const generated = generateKeymap(layout, keymapWithDefines)
+    const keymapText = generated.code
+
+    const { id: buildId, outDir } = await localBuild.runBuilds(
+      { board, shields, keymapText, id },
+      events
+    )
+
+    events.phase('archive', { message: 'Build complete' })
+    const files = fs.readdirSync(outDir).filter(f => f.endsWith('.uf2'))
+    registry.push('done', {
+      buildId,
+      shields,
+      files,
+      downloadUrls: files.map(name => `/build/local/artifact/${buildId}/${name}`)
+    })
+  } catch (err) {
+    console.error('Local build error', err)
+    registry.push('error', { message: err.message || String(err), detail: err.stack })
+  } finally {
+    registry.off('event', onEvent)
+    res.end()
+  }
+})
+
+router.get('/local/artifact/:id/:name', (req, res) => {
+  const { id, name } = req.params
+  if (!name.endsWith('.uf2')) return res.status(400).json({ error: 'invalid artifact' })
+  const filePath = localBuild.artifactPath(id, name)
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'not found' })
+  res.setHeader('Content-Type', 'application/octet-stream')
+  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(name)}"`)
+  fs.createReadStream(filePath).pipe(res)
 })
 
 module.exports = router

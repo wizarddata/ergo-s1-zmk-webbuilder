@@ -12,9 +12,9 @@ already cloned onto your computer.
   cloned repositories or clone them into this directory if you must.
 3. Run `npm install`
 4. Run `npm run dev`
-5. Open `http://localhost:8080` in your browser. If a different port is needed
+5. Open `http://localhost:8090` in your browser. If a different port is needed
   set it in an environment variable when starting the server (e.g.
-  `PORT=8081 node index.js`).
+  `PORT=8091 node index.js`).
 
 \**The editor works using metadata files that describe the layout and keymap of
 the keyboard. This is based on JSON files used by QMK and Keyboard Layout Editor

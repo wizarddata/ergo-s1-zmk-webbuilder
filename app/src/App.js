@@ -5,16 +5,13 @@ import { useCallback, useMemo, useState } from 'react'
 import './App.css'
 import { DefinitionsContext } from './providers'
 import { loadKeycodes } from './keycodes'
-import { loadBehaviours } from './api'
+import { loadBehaviours, importKeymapText, generateKeymapCode } from './api'
 import KeyboardPicker from './Pickers/KeyboardPicker'
-import Spinner from './Common/Spinner'
 import Keyboard from './Keyboard/Keyboard'
-import GitHubLink from './GitHubLink'
 import Loader from './Common/Loader'
 import BuildPanel from './BuildPanel'
 import DefinesPanel from './DefinesPanel'
 import { getKeyBoundingBox } from './key-units'
-import github from './Pickers/Github/api'
 
 function computeBbox (layout) {
   if (!layout) return null
@@ -28,15 +25,24 @@ function computeBbox (layout) {
   }), { x: 0, y: 0 })
 }
 
+function shieldsFor (board, sides) {
+  const map = {
+    nice_nano: { left: 'ergo_s1_oe_left', right: 'ergo_s1_oe_right' },
+    nrf52840dk_nrf52840: { left: 'ergo_s1_left', right: 'ergo_s1_right' }
+  }
+  const lookup = map[board] || map.nice_nano
+  return sides.map(s => lookup[s]).filter(Boolean)
+}
+
 function App () {
   const [definitions, setDefinitions] = useState(null)
   const [layout, setLayout] = useState(null)
   const [keymap, setKeymap] = useState(null)
   const [editingKeymap, setEditingKeymap] = useState(null)
   const [defines, setDefines] = useState([])
-  const [saving, setSaving] = useState(false)
   const [context, setContext] = useState(null)
-  const [boards, setBoards] = useState(['nice_nano'])
+  const [board, setBoard] = useState('nice_nano')
+  const [sides, setSides] = useState(['left', 'right'])
   const [importError, setImportError] = useState(null)
 
   const handleContext = useCallback((ctx) => {
@@ -57,7 +63,7 @@ function App () {
   const handleDownload = useCallback(async () => {
     if (!layout || !(editingKeymap || keymap)) return
     try {
-      const code = await github.generateKeymapCode(layout, editingKeymap || keymap, defines)
+      const code = await generateKeymapCode(layout, editingKeymap || keymap, defines)
       const blob = new Blob([code], { type: 'text/plain' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -79,7 +85,7 @@ function App () {
     setImportError(null)
     try {
       const text = await file.text()
-      const imported = await github.importKeymapText(text)
+      const imported = await importKeymapText(text)
       const layerNames = imported.layer_names || imported.layers.map((_, i) => `Layer ${i}`)
       Object.assign(imported, { layer_names: layerNames })
       setKeymap(imported)
@@ -91,20 +97,6 @@ function App () {
     }
   }, [])
 
-  const handleCommit = useMemo(() => async function () {
-    if (!context?.branch) return
-    setSaving(true)
-    try {
-      await github.commitChanges(context.branch, layout, editingKeymap || keymap, { boards, updateInfra: true, defines })
-      if (editingKeymap) {
-        setKeymap(editingKeymap)
-        setEditingKeymap(null)
-      }
-    } finally {
-      setSaving(false)
-    }
-  }, [context, layout, editingKeymap, keymap, boards, defines])
-
   const initialize = useMemo(() => async function () {
     const [keycodes, behaviours] = await Promise.all([loadKeycodes(), loadBehaviours()])
     keycodes.indexed = keyBy(keycodes, 'code')
@@ -114,9 +106,11 @@ function App () {
 
   const availableBoards = context?.serverConfig?.boards || []
 
-  const toggleBoard = (id) => {
-    setBoards(prev => prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id])
+  const toggleSide = (s) => {
+    setSides(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])
   }
+
+  const shields = shieldsFor(board, sides)
 
   return (
     <>
@@ -125,15 +119,24 @@ function App () {
 
         {availableBoards.length > 0 && (
           <fieldset style={{ margin: '8px 0', padding: 8 }}>
-            <legend style={{ fontSize: 12 }}>Build targets</legend>
-            {availableBoards.map(b => (
-              <label key={b.id} style={{ display: 'inline-block', marginRight: 12, fontSize: 13 }}>
+            <legend style={{ fontSize: 12 }}>Build target</legend>
+            <select
+              value={board}
+              onChange={e => setBoard(e.target.value)}
+              style={{ marginRight: 12 }}
+            >
+              {availableBoards.map(b => (
+                <option key={b.id} value={b.id}>{b.label}</option>
+              ))}
+            </select>
+            {['left', 'right'].map(s => (
+              <label key={s} style={{ display: 'inline-block', marginRight: 12, fontSize: 13 }}>
                 <input
                   type="checkbox"
-                  checked={boards.includes(b.id)}
-                  onChange={() => toggleBoard(b.id)}
+                  checked={sides.includes(s)}
+                  onChange={() => toggleSide(s)}
                 />
-                {' '}{b.label}
+                {' '}{s}
               </label>
             ))}
           </fieldset>
@@ -151,17 +154,8 @@ function App () {
             title="Download generated .keymap file"
             disabled={!layout || !(editingKeymap || keymap)}
             onClick={handleDownload}
-            style={{ marginRight: 8 }}
           >
             Download .keymap
-          </button>
-          <button
-            title="Commit keymap changes to GitHub fork"
-            disabled={(!editingKeymap && defines.length === 0) || !context?.branch}
-            onClick={handleCommit}
-          >
-            {saving ? 'Saving' : 'Commit Changes'}
-            {saving && <Spinner />}
           </button>
         </div>
         {importError && (
@@ -193,18 +187,16 @@ function App () {
           <DefinesPanel defines={defines} onChange={handleDefinesChange} />
         )}
 
-        {context?.branch && layout && (editingKeymap || keymap) && boards.length > 0 && (
+        {layout && (editingKeymap || keymap) && shields.length > 0 && (
           <BuildPanel
-            branch={context.branch}
+            board={board}
+            shields={shields}
             layout={layout}
             keymap={editingKeymap || keymap}
-            boards={boards}
             defines={defines}
-            disabled={saving}
           />
         )}
       </Loader>
-      <GitHubLink className="github-link" />
     </>
   )
 }

@@ -11,7 +11,7 @@ receives key bindings already parsed into a tree of values and parameters.
 
 The easiest way to use this is the [hosted version](https://nickcoutsos.github.io/keymap-editor).
 The second easiest is locally, served up via the API itself (in the repo root,
-run `npm run dev` and open `http://localhost:8080` in your browser).
+run `npm run dev` and open `http://localhost:8090` in your browser).
 
 If you must deploy this app to the web then you'll need to take care of building
 it. This requires some configuration, as seen in the [config module](./config.js).

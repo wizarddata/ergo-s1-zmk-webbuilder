@@ -4,7 +4,7 @@ const path = require('path')
 const config = require('../config')
 
 const appDir = path.join(__dirname, '..', '..', 'app')
-const API_BASE_URL = 'http://localhost:8080'
+const API_BASE_URL = `http://localhost:${config.PORT || 8090}`
 const APP_BASE_URL = 'http://localhost:3000'
 
 function init (app) {

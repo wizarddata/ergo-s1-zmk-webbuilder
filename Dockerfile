@@ -13,5 +13,5 @@ RUN npm ci --omit=dev --no-audit --no-fund --ignore-scripts
 COPY index.js ./
 COPY api ./api
 COPY --from=web-build /src/app/build ./app/build
-EXPOSE 8080
+EXPOSE 8090
 CMD ["node", "index.js"]

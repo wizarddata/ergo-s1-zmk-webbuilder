@@ -4,10 +4,10 @@ services:
     image: ergo-s1-zmk-builder:latest
     container_name: ergo-s1-zmk-builder
     ports:
-      - "8080:8080"
+      - "8090:8090"
     env_file:
       - .env
     environment:
-      PORT: 8080
-      APP_BASE_URL: http://localhost:8080
+      PORT: 8090
+      APP_BASE_URL: http://localhost:8090
     restart: unless-stopped

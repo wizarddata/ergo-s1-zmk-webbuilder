@@ -24,7 +24,8 @@ app.use(morgan('dev'))
 app.get('/health', (req, res) => res.sendStatus(200))
 
 app.use(keyboards)
-app.use('/github', require('./routes/github'))
+app.use(require('./routes/keymap'))
+app.get('/server-config', (req, res) => res.json({ boards: config.BOARDS }))
 app.use('/build', require('./routes/build'))
 
 const buildDir = path.join(__dirname, '..', 'app', 'build')
