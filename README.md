@@ -1,6 +1,6 @@
 # ErgoS1 ZMK Builder
 
-GUI for editing [Ergo S-1](https://github.com/wizarddata/Ergo-S-1) ZMK keymaps + building firmware locally. No GitHub fork or PAT required — builds run in Docker against a one-time clone of [arcanemachine/zmk-ergo-s-1](https://github.com/arcanemachine/zmk-ergo-s-1).
+GUI for editing [Ergo S-1](https://github.com/wizarddata/Ergo-S-1) ZMK keymaps + building firmware locally. No GitHub fork or PAT required — builds run in Docker against a pinned commit of [arcanemachine/zmk-ergo-s-1](https://github.com/arcanemachine/zmk-ergo-s-1) (fetched once into a Docker volume), so the firmware you produce stays linked to a specific upstream revision instead of drifting with their `main` branch.
 
 Based on [Nylone/zmk-keymap-editor](https://github.com/Nylone/zmk-keymap-editor) (fork of [nickcoutsos/keymap-editor](https://github.com/nickcoutsos/keymap-editor)).
 
@@ -61,7 +61,7 @@ Defaults are usually fine. To override, copy `.env.template` → `.env`:
 | `BUILD_CACHE_VOLUME` | `ergo-s1-cache` | Docker named volume holding ZMK fork + zephyr + modules. Lives inside Docker; faster than a host bind mount on Windows/Mac. |
 | `ARTIFACTS_DIR` | `%LOCALAPPDATA%/ergo-s1-builder/artifacts` (Win), `~/.cache/ergo-s1-builder/artifacts` | Where built `.uf2` files land on the host |
 | `ZMK_FORK_GIT_URL` | `https://github.com/arcanemachine/zmk-ergo-s-1.git` | ZMK fork URL |
-| `ZMK_FORK_REVISION` | `main` | ZMK fork branch/tag |
+| `ZMK_FORK_REVISION` | `f195533d3aeef918f6a81d13e3e4cab17ed9929e` | Pinned ZMK fork commit. Bump to a newer SHA (or a branch name) when you've vetted upstream changes. |
 | `DOCKER_IMAGE` | `zmkfirmware/zmk-dev-arm:4.1-branch` | Build image. Matches the Zephyr `v4.1.0+zmk-fixes` pin in arcanemachine's `west.yml`. |
 | `ZMK_CONFIG_PATH` | unset (uses bundled defaults) | Optional. Point to a local clone of an Ergo S-1 zmk-config repo to load its keymap on boot instead of the bundled one. |
 

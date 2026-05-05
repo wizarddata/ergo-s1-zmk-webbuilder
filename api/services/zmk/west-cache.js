@@ -63,10 +63,17 @@ async function inspectCacheState () {
 }
 
 async function cloneZmk (onLog) {
-  onLog?.(`Cloning ${config.ZMK_FORK_GIT_URL}@${config.ZMK_FORK_REVISION} into volume`)
-  await spawnLogged('docker', dockerRunArgs(
-    `git clone --depth 1 --branch ${config.ZMK_FORK_REVISION} ${config.ZMK_FORK_GIT_URL} /workspace/zmk`
-  ), {}, onLog)
+  onLog?.(`Fetching ${config.ZMK_FORK_GIT_URL}@${config.ZMK_FORK_REVISION} into volume`)
+  // init+fetch handles both branch names and explicit commit SHAs (we pin a SHA by default).
+  const cmd = [
+    'mkdir -p /workspace/zmk',
+    'cd /workspace/zmk',
+    'git init -q',
+    `git remote add origin ${config.ZMK_FORK_GIT_URL}`,
+    `git fetch --depth 1 origin ${config.ZMK_FORK_REVISION}`,
+    'git checkout -q FETCH_HEAD'
+  ].join(' && ')
+  await spawnLogged('docker', dockerRunArgs(cmd), {}, onLog)
 }
 
 async function westInitUpdate (onLog) {

@@ -8,7 +8,9 @@ const ENABLE_DEV_SERVER = process.env.ENABLE_DEV_SERVER
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${PORT}`
 
 const ZMK_FORK_GIT_URL = process.env.ZMK_FORK_GIT_URL || 'https://github.com/arcanemachine/zmk-ergo-s-1.git'
-const ZMK_FORK_REVISION = process.env.ZMK_FORK_REVISION || 'main'
+// Pinned to the ZMK fork commit known to produce a working firmware on 2026-05-05.
+// Bump deliberately when arcanemachine ships changes you've vetted.
+const ZMK_FORK_REVISION = process.env.ZMK_FORK_REVISION || 'f195533d3aeef918f6a81d13e3e4cab17ed9929e'
 const DOCKER_IMAGE = process.env.DOCKER_IMAGE || 'zmkfirmware/zmk-dev-arm:4.1-branch'
 
 const BUILD_CACHE_VOLUME = process.env.BUILD_CACHE_VOLUME || 'ergo-s1-cache'
