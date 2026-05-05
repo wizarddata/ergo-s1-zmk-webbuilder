@@ -8,6 +8,7 @@
     "start": "node index.js",
     "dev": "cross-env ENABLE_DEV_SERVER=true node index.js",
     "reset-cache": "node -e \"require('./api/services/zmk/west-cache').resetCache().then(()=>console.log('cache volume removed'))\"",
+    "sync-defaults": "node scripts/sync-defaults.js",
     "test": "node --check index.js && for f in api/*.js api/routes/*.js api/services/*.js api/services/zmk/*.js; do node --check \"$f\" || exit 1; done"
   },
   "license": "MIT",

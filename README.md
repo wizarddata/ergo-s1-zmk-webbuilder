@@ -14,35 +14,21 @@ Based on [Nylone/zmk-keymap-editor](https://github.com/Nylone/zmk-keymap-editor)
 ## Quick start
 
 ```sh
-# 1. Clone this repo and the keymap-source repo side by side
 git clone https://github.com/wizarddata/ergo-s1-zmk-webbuilder.git
-git clone https://github.com/wizarddata/ergo-s-1-zmk-config.git zmk-config
-
-# 2. Install deps (also runs npm install in app/ via postinstall)
 cd ergo-s1-zmk-webbuilder
-npm install
-
-# 3. Build the React frontend
-cd app && npm run build && cd ..
-
-# 4. Start server
-node index.js
+npm install                       # also installs app/ deps via postinstall
+cd app && npm run build && cd ..  # build React frontend
+node index.js                     # start server on :8090
 ```
 
 Open <http://localhost:8090>.
 
-Layout: the two folders must be siblings:
-```
-your-folder/
-  ├── ergo-s1-zmk-webbuilder/   <- this repo
-  └── zmk-config/               <- ergo-s-1-zmk-config (default keymap source)
-```
-Or set `ZMK_CONFIG_PATH` in `.env` to point the server elsewhere.
+A factory-default Ergo S-1 keymap is bundled with the app — no extra repo to clone. To start from your own existing keymap, click **Upload .keymap** in the UI on first load.
 
 ## Building firmware (in the browser)
 
-1. Page loads default keymap from `../zmk-config/config/`.
-2. (Optional) Click **Upload .keymap** to import an existing keymap file.
+1. Page loads with the bundled factory-default Ergo S-1 keymap.
+2. (Optional) Click **Upload .keymap** to start from your own existing keymap file instead. Your file overwrites the editor state for the rest of the session.
 3. Click any key on the visual keyboard to remap it.
 4. Pick a **board** (`nice_nano` for OSE, `nrf52840dk_nrf52840` for prototype).
 5. Tick **left**, **right**, or both.
@@ -77,7 +63,7 @@ Defaults are usually fine. To override, copy `.env.template` → `.env`:
 | `ZMK_FORK_GIT_URL` | `https://github.com/arcanemachine/zmk-ergo-s-1.git` | ZMK fork URL |
 | `ZMK_FORK_REVISION` | `main` | ZMK fork branch/tag |
 | `DOCKER_IMAGE` | `zmkfirmware/zmk-dev-arm:4.1-branch` | Build image. Matches the Zephyr `v4.1.0+zmk-fixes` pin in arcanemachine's `west.yml`. |
-| `ZMK_CONFIG_PATH` | sibling `../zmk-config` | Where the default keymap is read from |
+| `ZMK_CONFIG_PATH` | unset (uses bundled defaults) | Optional. Point to a local clone of an Ergo S-1 zmk-config repo to load its keymap on boot instead of the bundled one. |
 
 ### Reset cache
 
@@ -87,6 +73,14 @@ npm run reset-cache
 
 Drops the `ergo-s1-cache` Docker volume. Next build re-clones + re-runs `west update` (~3–5 min).
 
+### Refresh bundled defaults
+
+```sh
+npm run sync-defaults
+```
+
+Re-fetches `info.json` + `ergo_s1_oe.keymap` from `arcanemachine/ergo-s-1-zmk-config@master` into the bundled defaults dir. Run this if upstream changes the factory keymap and you want to ship the new one.
+
 ## How the build pipeline works
 
 ```
@@ -95,7 +89,7 @@ Browser
   ▼
 Express server (api/)
   ├── /server-config              static board+shield matrix
-  ├── /layout, /keymap            default ZMK keymap from ../zmk-config
+  ├── /layout, /keymap            bundled factory-default keymap
   ├── /import-keymap              parse uploaded .keymap → JSON
   ├── /generate-keymap            JSON → .keymap text
   ├── /build/preflight            docker availability check

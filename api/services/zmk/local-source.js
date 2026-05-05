@@ -3,7 +3,8 @@ const path = require('path')
 const { parseKeymap } = require('./keymap')
 const { parseKeymapCode } = require('./parse-keymap-code')
 
-const ZMK_PATH = process.env.ZMK_CONFIG_PATH || path.join(__dirname, '..', '..', '..', '..', 'zmk-config')
+const DEFAULTS_DIR = path.join(__dirname, 'data', 'defaults')
+const ZMK_CONFIG_PATH = process.env.ZMK_CONFIG_PATH
 
 const EMPTY_KEYMAP = {
   keyboard: 'unknown',
@@ -21,28 +22,33 @@ function loadKeycodes () {
   return JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'zmk-keycodes.json')))
 }
 
+function configDir () {
+  if (ZMK_CONFIG_PATH) return path.join(ZMK_CONFIG_PATH, 'config')
+  return DEFAULTS_DIR
+}
+
 function loadLayout () {
-  const infoPath = path.join(ZMK_PATH, 'config', 'info.json')
+  const infoPath = path.join(configDir(), 'info.json')
   const info = JSON.parse(fs.readFileSync(infoPath))
   const layouts = info.layouts || {}
   const key = layouts.default ? 'default' : Object.keys(layouts)[0]
   return layouts[key].layout
 }
 
-function findKeymapFile () {
-  const files = fs.readdirSync(path.join(ZMK_PATH, 'config'))
+function findKeymapFile (dir) {
+  const files = fs.readdirSync(dir)
   return files.find(file => file.endsWith('.keymap'))
 }
 
 function loadKeymap () {
-  const configDir = path.join(ZMK_PATH, 'config')
-  const jsonPath = path.join(configDir, 'keymap.json')
+  const dir = configDir()
+  const jsonPath = path.join(dir, 'keymap.json')
   if (fs.existsSync(jsonPath)) {
     return parseKeymap(JSON.parse(fs.readFileSync(jsonPath)))
   }
-  const keymapFile = findKeymapFile()
+  const keymapFile = findKeymapFile(dir)
   if (keymapFile) {
-    const text = fs.readFileSync(path.join(configDir, keymapFile), 'utf8')
+    const text = fs.readFileSync(path.join(dir, keymapFile), 'utf8')
     try {
       return parseKeymap(parseKeymapCode(text))
     } catch (err) {
