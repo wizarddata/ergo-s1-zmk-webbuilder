@@ -11,8 +11,8 @@
 }
 .layer-selector li {
 	cursor: pointer;
-	background-color: rgba(201, 201, 201, 0.85);
-	color: darkgray;
+	background-color: rgba(60, 60, 60, 0.85);
+	color: #aaa;
 	border-radius: 15px;
   height: 30px;
 	padding: 0px;

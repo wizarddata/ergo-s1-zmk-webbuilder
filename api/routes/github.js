@@ -8,8 +8,9 @@ const {
   commitChanges,
   MissingRepoFile
 } = require('../services/github')
-const { parseKeymap, validateKeymapJson, KeymapValidationError } = require('../services/zmk/keymap')
+const { parseKeymap, validateKeymapJson, KeymapValidationError, generateKeymap } = require('../services/zmk/keymap')
 const { validateInfoJson, InfoValidationError } = require('../services/zmk/layout')
+const { parseKeymapCode, KeymapCodeParseError } = require('../services/zmk/parse-keymap-code')
 
 const router = Router()
 
@@ -56,10 +57,10 @@ router.get('/keyboard-files/:owner/:repo', async (req, res, next) => {
   const repo = `${req.params.owner}/${req.params.repo}`
   const branch = req.query.branch || config.FORK_BRANCH
   try {
-    const { info, keymap } = await fetchKeyboardFiles(repo, branch)
+    const { info, keymap, defines } = await fetchKeyboardFiles(repo, branch)
     validateInfoJson(info)
     validateKeymapJson(keymap)
-    res.json({ info, keymap: parseKeymap(keymap) })
+    res.json({ info, keymap: parseKeymap(keymap), defines })
   } catch (err) {
     if (err instanceof MissingRepoFile) {
       return res.status(400).json({ name: err.constructor.name, path: err.path, errors: err.errors })
@@ -71,12 +72,41 @@ router.get('/keyboard-files/:owner/:repo', async (req, res, next) => {
   }
 })
 
+router.post('/import-keymap', (req, res) => {
+  const { text } = req.body
+  try {
+    const json = parseKeymapCode(text)
+    validateKeymapJson(json)
+    res.json({ keymap: parseKeymap(json) })
+  } catch (err) {
+    if (err instanceof KeymapCodeParseError || err instanceof KeymapValidationError) {
+      return res.status(400).json({ name: err.name, errors: err.errors })
+    }
+    console.error('import-keymap error', err)
+    res.status(500).json({ error: err.message || String(err) })
+  }
+})
+
+router.post('/generate-keymap', (req, res, next) => {
+  try {
+    const { layout, keymap, defines = [] } = req.body
+    if (!layout || !keymap) {
+      return res.status(400).json({ error: 'layout and keymap required' })
+    }
+    const keymapWithDefines = Object.assign({}, keymap, { defines })
+    const generated = generateKeymap(layout, keymapWithDefines)
+    res.type('text/plain').send(generated.code)
+  } catch (err) {
+    next(err)
+  }
+})
+
 router.post('/keyboard-files/:owner/:repo/:branch', async (req, res, next) => {
   const repo = `${req.params.owner}/${req.params.repo}`
   const { branch } = req.params
-  const { keymap, layout, boards = ['nice_nano'], updateInfra = false } = req.body
+  const { keymap, layout, boards = ['nice_nano'], updateInfra = false, defines = [] } = req.body
   try {
-    const sha = await commitChanges(repo, branch, layout, keymap, { boards, updateInfra })
+    const sha = await commitChanges(repo, branch, layout, keymap, { boards, updateInfra, defines })
     res.json({ sha })
   } catch (err) {
     next(err)

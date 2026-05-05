@@ -27,12 +27,12 @@ function sse (res) {
 router.post('/:owner/:repo/:branch', async (req, res) => {
   const repo = `${req.params.owner}/${req.params.repo}`
   const { branch } = req.params
-  const { keymap, layout, boards = ['nice_nano'], updateInfra = true } = req.body
+  const { keymap, layout, boards = ['nice_nano'], updateInfra = true, defines = [] } = req.body
   const send = sse(res)
 
   try {
     send('status', { phase: 'commit', message: 'Committing keymap to fork' })
-    const sha = await commitChanges(repo, branch, layout, keymap, { boards, updateInfra })
+    const sha = await commitChanges(repo, branch, layout, keymap, { boards, updateInfra, defines })
     send('commit', { sha })
 
     send('status', { phase: 'dispatch', message: 'Dispatching GitHub Actions workflow' })

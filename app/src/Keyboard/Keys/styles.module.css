@@ -4,8 +4,8 @@
 	justify-content: center;
 	align-items: center;
 
-	color: #999;
-	background-color: whitesmoke;
+	color: #ccc;
+	background-color: #2d2d2d;
 	font-size: 110%;
 	border-radius: 5px;
 }
@@ -39,7 +39,7 @@
 	border-radius: 4px;
 }
 .code.highlight {
-	background-color: white !important;
+	background-color: #1a1a1a !important;
 	color: var(--hover-selection) !important;
 }
 
@@ -60,7 +60,7 @@
 .behaviour-binding:hover {
   cursor: pointer;
   color: var(--hover-selection) !important;
-  background-color: white;
+  background-color: #1a1a1a;
   border-radius: 5px 0;
   opacity: 1;
 }

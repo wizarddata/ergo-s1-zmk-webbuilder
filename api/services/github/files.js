@@ -1,6 +1,7 @@
 const api = require('./api')
 const { getToken } = require('./auth')
 const zmk = require('../zmk')
+const { extractDefinesOnly } = require('../zmk/parse-keymap-code')
 const config = require('../../config')
 
 const MODE_FILE = '100644'
@@ -30,7 +31,12 @@ async function fetchKeyboardFiles (repo, branch) {
   const { data: info } = await fetchFile(repo, 'config/info.json', { raw: true, branch })
   const keymap = await fetchKeymap(repo, branch)
   const originalCodeKeymap = await findCodeKeymap(repo, branch)
-  return { info, keymap, originalCodeKeymap }
+  let defines = []
+  try {
+    const { data: rawCode } = await fetchFile(repo, originalCodeKeymap.path, { raw: true, branch })
+    defines = extractDefinesOnly(rawCode)
+  } catch (_) { /* fall through with empty defines */ }
+  return { info, keymap, defines, originalCodeKeymap }
 }
 
 async function fetchKeymap (repo, branch) {
@@ -135,9 +141,10 @@ function buildWestYml () {
 }
 
 async function commitChanges (repo, branch, layout, keymap, opts = {}) {
-  const { boards = ['nice_nano'], updateInfra = false } = opts
+  const { boards = ['nice_nano'], updateInfra = false, defines = [] } = opts
   const template = await findCodeKeymapTemplate(repo, branch)
-  const generated = zmk.generateKeymap(layout, keymap, template)
+  const keymapWithDefines = Object.assign({}, keymap, { defines })
+  const generated = zmk.generateKeymap(layout, keymapWithDefines, template)
   const original = await findCodeKeymap(repo, branch)
 
   const files = [

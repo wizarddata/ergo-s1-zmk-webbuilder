@@ -2880,7 +2880,7 @@
   },
   {
     "names": ["LEFT_ALT", "LALT", "LA(code)"],
-    "symbol": "⌥",
+    "symbol": "Alt",
     "description": "Left Alt",
     "context": "Keyboard",
     "clarify": false,
@@ -2906,7 +2906,7 @@
       "LEFT_META",
       "LMETA"
     ],
-    "symbol": "⌘",
+    "symbol": "⊞",
     "description": "Left GUI (Windows / Command / Meta)",
     "context": "Keyboard",
     "clarify": false,
@@ -2953,7 +2953,7 @@
   },
   {
     "names": ["RIGHT_ALT", "RALT", "RA(code)"],
-    "symbol": "⌥",
+    "symbol": "Alt",
     "description": "Right Alt",
     "context": "Keyboard",
     "clarify": false,
@@ -2979,7 +2979,7 @@
       "RIGHT_META",
       "RMETA"
     ],
-    "symbol": "⌘",
+    "symbol": "⊞",
     "description": "Right GUI (Windows / Command / Meta)",
     "context": "Keyboard",
     "clarify": false,

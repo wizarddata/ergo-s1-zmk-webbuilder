@@ -49,7 +49,8 @@ class API extends EventEmitter {
       const defaultLayout = data.info.layouts.default || data.info.layouts[Object.keys(data.info.layouts)[0]]
       return {
         layout: defaultLayout.layout,
-        keymap: data.keymap
+        keymap: data.keymap,
+        defines: data.defines || []
       }
     } catch (err) {
       if (err.response?.status === 400) {
@@ -57,6 +58,28 @@ class API extends EventEmitter {
       }
       throw err
     }
+  }
+
+  async importKeymapText (text) {
+    const { data } = await this._request({
+      url: '/github/import-keymap',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: { text }
+    })
+    return data.keymap
+  }
+
+  async generateKeymapCode (layout, keymap, defines = []) {
+    const { data } = await this._request({
+      url: '/github/generate-keymap',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      data: { layout, keymap, defines },
+      responseType: 'text',
+      transformResponse: [r => r]
+    })
+    return data
   }
 
   async commitChanges (branch, layout, keymap, opts = {}) {

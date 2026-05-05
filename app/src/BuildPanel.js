@@ -5,7 +5,7 @@ import github from './Pickers/Github/api'
 import * as config from './config'
 import Spinner from './Common/Spinner'
 
-function BuildPanel ({ branch, layout, keymap, boards, disabled }) {
+function BuildPanel ({ branch, layout, keymap, boards, defines, disabled }) {
   const [running, setRunning] = useState(false)
   const [events, setEvents] = useState([])
   const [download, setDownload] = useState(null)
@@ -38,7 +38,7 @@ function BuildPanel ({ branch, layout, keymap, boards, disabled }) {
       end: () => setRunning(false)
     }
 
-    const abortFn = github.buildStream(branch, { layout, keymap, boards, updateInfra: true }, handlers)
+    const abortFn = github.buildStream(branch, { layout, keymap, boards, defines, updateInfra: true }, handlers)
     setAbort(() => abortFn)
   }
 
@@ -90,6 +90,7 @@ BuildPanel.propTypes = {
   layout: PropTypes.array.isRequired,
   keymap: PropTypes.object.isRequired,
   boards: PropTypes.arrayOf(PropTypes.string).isRequired,
+  defines: PropTypes.array,
   disabled: PropTypes.bool
 }
 

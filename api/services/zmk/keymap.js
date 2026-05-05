@@ -89,6 +89,7 @@ function generateKeymap (layout, keymap, template) {
 function renderTemplate(template, params) {
   const includesPattern = /\{\{\s*behaviour_includes\s*\}\}/
   const layersPattern = /\{\{\s*rendered_layers\s*\}\}/
+  const definesPattern = /\{\{\s*defines\s*\}\}/
 
   const renderedLayers = params.layers.map((layer, i) => {
     const name = i === 0 ? 'default_layer' : `layer_${params.layerNames[i] || i}`
@@ -106,8 +107,14 @@ ${rendered}
 `
   })
 
+  const definesBlock = (params.defines || [])
+    .filter(d => d && d.name)
+    .map(d => `#define ${d.name} ${d.value || ''}`)
+    .join('\n')
+
   return template
     .replace(includesPattern, params.behaviourHeaders.join('\n'))
+    .replace(definesPattern, definesBlock)
     .replace(layersPattern, renderedLayers.join(''))
 }
 
@@ -121,7 +128,8 @@ function generateKeymapCode (layout, keymap, encoded, template) {
     layout,
     behaviourHeaders,
     layers: encoded.layers,
-    layerNames: names
+    layerNames: names,
+    defines: keymap.defines || []
   })
 }
 

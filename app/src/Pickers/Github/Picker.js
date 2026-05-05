@@ -52,9 +52,9 @@ function GithubPicker ({ onSelect, onContext }) {
     setState(s => ({ ...s, loading: true, loadError: null }))
     ;(async () => {
       try {
-        const { layout, keymap } = await github.fetchLayoutAndKeymap(branch)
+        const { layout, keymap, defines } = await github.fetchLayoutAndKeymap(branch)
         setState(s => ({ ...s, loading: false }))
-        onSelect({ source: 'github', github: { repository: github.fork, branch }, layout, keymap })
+        onSelect({ source: 'github', github: { repository: github.fork, branch }, layout, keymap, defines })
         onContext?.({ branch, fork: github.fork, user: github.user, serverConfig: github.serverConfig })
       } catch (err) {
         const msg = err.response?.data?.error || err.message || String(err)

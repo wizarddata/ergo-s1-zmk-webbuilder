@@ -5,10 +5,10 @@ import GithubPicker from './Github/Picker'
 
 function KeyboardPicker ({ onSelect, onContext }) {
   const handleKeyboardSelected = useMemo(() => function (event) {
-    const { layout, keymap, ...rest } = event
+    const { layout, keymap, defines, ...rest } = event
     const layerNames = keymap.layer_names || keymap.layers.map((_, i) => `Layer ${i}`)
     Object.assign(keymap, { layer_names: layerNames })
-    onSelect({ source: 'github', layout, keymap, ...rest })
+    onSelect({ source: 'github', layout, keymap, defines: defines || [], ...rest })
   }, [onSelect])
 
   return (

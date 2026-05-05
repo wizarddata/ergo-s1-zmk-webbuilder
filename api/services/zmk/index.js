@@ -1,5 +1,6 @@
 const {
   parseKeyBinding,
+  parseKeymap,
   generateKeymap
 } = require('./keymap')
 
@@ -11,12 +12,20 @@ const {
   exportKeymap
 } = require('./local-source')
 
+const {
+  parseKeymapCode,
+  KeymapCodeParseError
+} = require('./parse-keymap-code')
+
 module.exports = {
   parseKeyBinding,
+  parseKeymap,
   generateKeymap,
   loadBehaviors,
   loadKeycodes,
   loadLayout,
   loadKeymap,
-  exportKeymap
+  exportKeymap,
+  parseKeymapCode,
+  KeymapCodeParseError
 }
