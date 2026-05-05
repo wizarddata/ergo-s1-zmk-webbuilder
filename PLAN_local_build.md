@@ -2,6 +2,44 @@
 
 GitHub-decoupled refactor. Last updated 2026-05-05. **Validated end-to-end.**
 
+## Selectable ZMK fork revision (added 2026-05-05)
+
+Default = pinned commit (vetted/tested, label `Pinned (tested 2026-05-05)`).
+Optional = latest `main` resolved at request time via `git ls-remote`.
+
+**API surface**
+- `GET /build/zmk-revisions` → `{ ok, revisions: [pinnedDescriptor, latestDescriptor] }`. Each descriptor: `{ id, label, sha, shortSha, ... }`. Latest descriptor includes `branch`, `resolvedAt`, `cached`. On lookup failure latest carries `error` field; UI disables that option.
+- `POST /build/local` — body now accepts optional `zmkRevision`: `'pinned'` | `'latest'` | a 40-char SHA. Server resolves to a concrete SHA before any cache work.
+- `GET /build/state` and the `attach` / `done` SSE events now carry `revision: { id, sha, shortSha, label }`.
+
+**Cache invalidation rule (single named volume `ergo-s1-cache`)**
+- `inspectCacheState` reads `/workspace/.cached-rev` stamp + `git -C /workspace/zmk rev-parse HEAD` to detect what is on disk.
+- If requested SHA ≠ stamped/HEAD: `git fetch --depth 1 origin <sha>` + `git checkout -f FETCH_HEAD` + `git reset --hard FETCH_HEAD`, then **wipe `/workspace/zmk/app/build/`** (CMake state from prior rev would otherwise be incompatible), re-run `west update --narrow`, rewrite stamp.
+- If requested SHA == stamped: skip clone/update, go straight to compile.
+
+**Build dir naming**
+- Per shield+rev: `build/<board>-<shield>-<rev7>`. Switching back and forth between revisions does not corrupt CMake state because each rev gets its own subtree.
+
+**Frontend UI**
+- `BuildPanel.js` shows a `ZMK fork:` `<select>` above the Build button, populated from `/build/zmk-revisions`.
+- Default selected = pinned. Latest option carries `⚠ untested — may fail to compile` warning when chosen.
+- After build attach, panel renders `Build using: <label> [<shortSha>]`.
+
+**Trust + reproducibility notes**
+- "Latest" pulls whatever upstream pushed minutes ago — same trust profile as the pinned SHA, but with no human-vetted gate. Acceptable for self-use; flag if ever multi-user.
+- Resolved SHA is logged in the build stream and the `done` event so the user always knows which commit produced their `.uf2`.
+- `GET /build/zmk-revisions` caches the latest-SHA lookup for 60 s to avoid hammering GitHub.
+
+**Bumping the pinned default**
+1. Verify a fresh upstream commit produces a working firmware (use `latest` option, build, flash).
+2. Edit `api/config.js` `ZMK_FORK_REVISION` (full SHA) + `ZMK_FORK_REVISION_TESTED_DATE`.
+3. `npm run reset-cache` (optional — invalidation now happens automatically on next build, but reset reclaims the orphaned tree if you want to start clean).
+
+**Followups (not done)**
+- Multi-volume option (one named volume per rev) for instant rev switching without re-fetch — deferred. Disk cost ~2-3 GB per rev.
+- Persisting last-built rev per artifact in the artifact dir, so download URLs can include rev in filename. Currently filename is just `<shield>.uf2`; rev is reported only via the SSE `done` event.
+
+
 ## What's done + working
 
 - **Backend**

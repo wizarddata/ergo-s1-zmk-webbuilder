@@ -60,6 +60,15 @@ export async function preflight () {
   return res.json()
 }
 
+export async function loadZmkRevisions () {
+  const res = await fetch(`${config.apiBaseUrl}/build/zmk-revisions`)
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || `HTTP ${res.status}`)
+  }
+  return res.json()
+}
+
 export async function buildState () {
   const res = await fetch(`${config.apiBaseUrl}/build/state`)
   return res.json()

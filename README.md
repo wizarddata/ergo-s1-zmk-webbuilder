@@ -1,6 +1,6 @@
 # ErgoS1 ZMK Builder
 
-GUI for editing [Ergo S-1](https://github.com/wizarddata/Ergo-S-1) ZMK keymaps + building firmware locally. No GitHub fork or PAT required — builds run in Docker against a pinned commit of [arcanemachine/zmk-ergo-s-1](https://github.com/arcanemachine/zmk-ergo-s-1) (fetched once into a Docker volume), so the firmware you produce stays linked to a specific upstream revision instead of drifting with their `main` branch.
+GUI for editing [Ergo S-1](https://github.com/wizarddata/Ergo-S-1) ZMK keymaps + building firmware locally. No GitHub fork or PAT required — builds run in Docker against a pinned commit of [arcanemachine/zmk-ergo-s-1](https://github.com/arcanemachine/zmk-ergo-s-1) (fetched once into a Docker volume), so the firmware you produce stays linked to a specific upstream revision instead of drifting with their `main` branch. A dropdown in the build panel lets you opt into the latest upstream `main` for any given build, while the pinned (tested) revision remains the default.
 
 Based on [Nylone/zmk-keymap-editor](https://github.com/Nylone/zmk-keymap-editor) (fork of [nickcoutsos/keymap-editor](https://github.com/nickcoutsos/keymap-editor)).
 
@@ -32,10 +32,14 @@ A factory-default Ergo S-1 keymap is bundled with the app — no extra repo to c
 3. Click any key on the visual keyboard to remap it.
 4. Pick a **board** (`nice_nano` for OSE, `nrf52840dk_nrf52840` for prototype).
 5. Tick **left**, **right**, or both.
-6. Click **Build Firmware**.
+6. (Optional) From the **ZMK fork** dropdown, pick a revision:
+   - **Pinned (tested YYYY-MM-DD)** — default. Vetted commit known to compile + run cleanly on the Ergo S-1.
+   - **Latest `main` (untested)** — resolves to upstream `main` HEAD at request time. Useful for trying a fresh upstream change. May fail to compile if upstream bumps Zephyr / SDK requirements past the bundled image; if a "latest" build fails, switch back to pinned.
+7. Click **Build Firmware**.
    - **First build:** ~3–5 minutes. Pulls the Docker image (~1 GB), clones the ZMK fork into a Docker named volume, runs `west update`. One time only.
-   - **Later builds:** ~30–60 seconds per shield.
-7. When the build finishes, click each `⬇ <shield>.uf2` link at the top of the build panel to download.
+   - **Later builds (same revision):** ~30–60 seconds per shield.
+   - **Switching revisions:** the cache re-fetches the new SHA and clears CMake state for that build target (~30–90 s overhead on top of the compile).
+8. When the build finishes, click each `⬇ <shield>.uf2` link at the top of the build panel to download. The build panel also shows the resolved short SHA so you know exactly which upstream commit produced the firmware.
 
 Files also land at `%LOCALAPPDATA%\ergo-s1-builder\artifacts\<buildId>\` (Windows) or `~/.cache/ergo-s1-builder/artifacts/<buildId>/`.
 
@@ -61,7 +65,7 @@ Defaults are usually fine. To override, copy `.env.template` → `.env`:
 | `BUILD_CACHE_VOLUME` | `ergo-s1-cache` | Docker named volume holding ZMK fork + zephyr + modules. Lives inside Docker; faster than a host bind mount on Windows/Mac. |
 | `ARTIFACTS_DIR` | `%LOCALAPPDATA%/ergo-s1-builder/artifacts` (Win), `~/.cache/ergo-s1-builder/artifacts` | Where built `.uf2` files land on the host |
 | `ZMK_FORK_GIT_URL` | `https://github.com/arcanemachine/zmk-ergo-s-1.git` | ZMK fork URL |
-| `ZMK_FORK_REVISION` | `f195533d3aeef918f6a81d13e3e4cab17ed9929e` | Pinned ZMK fork commit. Bump to a newer SHA (or a branch name) when you've vetted upstream changes. |
+| `ZMK_FORK_LATEST_BRANCH` | `main` | Branch resolved when "Latest" is picked from the build-panel dropdown. |
 | `DOCKER_IMAGE` | `zmkfirmware/zmk-dev-arm:4.1-branch` | Build image. Matches the Zephyr `v4.1.0+zmk-fixes` pin in arcanemachine's `west.yml`. |
 | `ZMK_CONFIG_PATH` | unset (uses bundled defaults) | Optional. Point to a local clone of an Ergo S-1 zmk-config repo to load its keymap on boot instead of the bundled one. |
 
@@ -72,6 +76,16 @@ npm run reset-cache
 ```
 
 Drops the `ergo-s1-cache` Docker volume. Next build re-clones + re-runs `west update` (~3–5 min).
+
+### Bumping the pinned (tested) ZMK fork revision
+
+The pinned SHA is a code constant — intentionally not overridable from `.env`, so the "tested" label can never silently drift. To bump:
+
+1. From the build panel, pick **Latest `main`** and run a real build for both halves.
+2. Flash both `.uf2`s and confirm the keyboard works.
+3. Edit `api/config.js`: update `ZMK_FORK_REVISION` to the resolved 40-char SHA and update `ZMK_FORK_REVISION_TESTED_DATE`.
+4. (Optional) `npm run reset-cache` for a fully clean re-validation.
+5. Commit + push.
 
 ### Refresh bundled defaults
 
@@ -93,7 +107,8 @@ Express server (api/)
   ├── /import-keymap              parse uploaded .keymap → JSON
   ├── /generate-keymap            JSON → .keymap text
   ├── /build/preflight            docker availability check
-  ├── /build/state                current/last build status
+  ├── /build/zmk-revisions        pinned + latest-resolved SHA list
+  ├── /build/state                current/last build status (incl. resolved revision)
   ├── /build/local                SSE: cache → docker run → .uf2 collect
   ├── /build/local/stream/:id     reattach to in-progress build (refresh-safe)
   ├── /build/local/artifact/:id/:name    serve built .uf2
@@ -114,6 +129,8 @@ docker run --rm
 
 A single build runs at a time. Refreshing the browser mid-build reattaches to the running build via the registry — no work lost.
 
+The Docker volume holds the ZMK fork at one revision at a time, stamped at `/workspace/.cached-rev`. When you switch revisions in the dropdown, the server compares the requested SHA to the stamp; if they differ, it fetches + checks out the new SHA, wipes the prior CMake build dirs, re-runs `west update`, and rewrites the stamp before compiling. Build dirs are also namespaced per `<board>-<shield>-<rev7>`, so nothing leaks across revisions.
+
 ## Troubleshooting
 
 - **`/build/preflight` returns 503** → Docker daemon not running. Start Docker Desktop and retry.
@@ -122,6 +139,8 @@ A single build runs at a time. Refreshing the browser mid-build reattaches to th
 - **CORS errors in browser console** → set `APP_BASE_URL` in `.env` to whatever URL you're loading the page from.
 - **Port 8090 already in use** → `PORT=8091 node index.js` or set `PORT` in `.env`.
 - **Need to peek inside the cache volume** → `docker run --rm -v ergo-s1-cache:/workspace -it alpine sh`.
+- **`Latest` option says `(offline)` and is disabled** → host couldn't reach `git ls-remote` for the upstream fork. Check internet / proxy. Pinned still works fully offline once the cache is populated.
+- **Build using `Latest` fails with a Zephyr or SDK error** → upstream bumped requirements past the pinned `DOCKER_IMAGE`. Fall back to **Pinned** for now; bump the image tag deliberately if you want to chase upstream.
 
 ## Local dev (frontend hot-reload)
 

@@ -24,7 +24,11 @@ function buildId () {
   return crypto.randomBytes(8).toString('hex') + '-' + Date.now()
 }
 
-async function buildOne ({ shield, board, keymapText, ioDir }, events) {
+function revSegment (revShort) {
+  return revShort && /^[0-9a-f]{4,40}$/i.test(revShort) ? revShort.slice(0, 7) : 'unknown'
+}
+
+async function buildOne ({ shield, board, keymapText, ioDir, revShort }, events) {
   const onLog = msg => events?.log?.(msg)
   events?.phase?.(`build:${shield}`)
 
@@ -34,7 +38,7 @@ async function buildOne ({ shield, board, keymapText, ioDir }, events) {
 
   await fsp.writeFile(path.join(ioDir, 'keymap'), keymapText, 'utf8')
 
-  const buildSubdir = `build/${board}-${shield}`
+  const buildSubdir = `build/${board}-${shield}-${revSegment(revShort)}`
   const containerCmd = [
     `cp /io/keymap /workspace/zmk/app/boards/shields/${shieldDir}/${keymapName}`,
     'cd /workspace/zmk/app',
@@ -52,14 +56,14 @@ async function buildOne ({ shield, board, keymapText, ioDir }, events) {
   return uf2HostPath
 }
 
-async function runBuilds ({ board, shields, keymapText, id }, events) {
+async function runBuilds ({ board, shields, keymapText, id, revShort }, events) {
   await fsp.mkdir(config.ARTIFACTS_DIR, { recursive: true })
   if (!id) id = buildId()
   const ioDir = path.join(config.ARTIFACTS_DIR, id)
   await fsp.mkdir(ioDir, { recursive: true })
 
   for (const shield of shields) {
-    const uf2 = await buildOne({ shield, board, keymapText, ioDir }, events)
+    const uf2 = await buildOne({ shield, board, keymapText, ioDir, revShort }, events)
     events?.log?.(`Output: ${uf2}`)
   }
 

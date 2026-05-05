@@ -11,7 +11,11 @@ class BuildRegistry extends EventEmitter {
   start (id, params) {
     this.current = {
       id,
-      params: { board: params?.board, shields: params?.shields },
+      params: {
+        board: params?.board,
+        shields: params?.shields,
+        revision: params?.revision || null
+      },
       startedAt: Date.now(),
       finishedAt: null,
       status: 'running',
@@ -57,6 +61,7 @@ class BuildRegistry extends EventEmitter {
       finishedAt: c.finishedAt,
       board: c.params.board,
       shields: c.params.shields,
+      revision: c.params.revision,
       result: c.result,
       error: c.error
     }
